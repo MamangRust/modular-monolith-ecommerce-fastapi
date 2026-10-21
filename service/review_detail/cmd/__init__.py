@@ -1,0 +1,1 @@
+"""Review detail cmd package."""

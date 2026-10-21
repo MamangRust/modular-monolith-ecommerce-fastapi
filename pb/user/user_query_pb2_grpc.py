@@ -1,0 +1,309 @@
+# DO NOT EDIT!
+"""Client and server classes corresponding to protobuf-defined services."""
+import grpc
+import warnings
+
+from pb.user import user_common_pb2 as user_dot_user__common__pb2
+from pb.user import user_query_pb2 as user_dot_user__query__pb2
+
+GRPC_GENERATED_VERSION = '1.84.0'
+GRPC_VERSION = grpc.__version__
+_version_not_supported = False
+
+try:
+    from grpc._utilities import first_version_is_lower
+    _version_not_supported = first_version_is_lower(GRPC_VERSION, GRPC_GENERATED_VERSION)
+except ImportError:
+    _version_not_supported = True
+
+if _version_not_supported:
+    raise RuntimeError(
+        f'The grpc package installed is at version {GRPC_VERSION},'
+        + ' but the generated code in user/user_query_pb2_grpc.py depends on'
+        + f' grpcio>={GRPC_GENERATED_VERSION}.'
+        + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
+        + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
+    )
+
+
+class UserQueryServiceStub:
+    """Missing associated documentation comment in.proto file."""
+
+    def __init__(self, channel):
+        """Constructor. Args: channel: A grpc.Channel."""
+        self.FindAll = channel.unary_unary(
+                '/pb.user.UserQueryService/FindAll',
+                request_serializer=user_dot_user__query__pb2.FindAllUserRequest.SerializeToString,
+                response_deserializer=user_dot_user__common__pb2.ApiResponsePaginationUser.FromString,
+                _registered_method=True)
+        self.FindById = channel.unary_unary(
+                '/pb.user.UserQueryService/FindById',
+                request_serializer=user_dot_user__common__pb2.FindByIdUserRequest.SerializeToString,
+                response_deserializer=user_dot_user__common__pb2.ApiResponseUser.FromString,
+                _registered_method=True)
+        self.FindByEmail = channel.unary_unary(
+                '/pb.user.UserQueryService/FindByEmail',
+                request_serializer=user_dot_user__common__pb2.FindByEmailRequest.SerializeToString,
+                response_deserializer=user_dot_user__common__pb2.ApiResponseUserWithPassword.FromString,
+                _registered_method=True)
+        self.FindByVerificationCode = channel.unary_unary(
+                '/pb.user.UserQueryService/FindByVerificationCode',
+                request_serializer=user_dot_user__common__pb2.FindByVerificationCodeRequest.SerializeToString,
+                response_deserializer=user_dot_user__common__pb2.ApiResponseUser.FromString,
+                _registered_method=True)
+        self.FindByActive = channel.unary_unary(
+                '/pb.user.UserQueryService/FindByActive',
+                request_serializer=user_dot_user__query__pb2.FindAllUserRequest.SerializeToString,
+                response_deserializer=user_dot_user__common__pb2.ApiResponsePaginationUserDeleteAt.FromString,
+                _registered_method=True)
+        self.FindByTrashed = channel.unary_unary(
+                '/pb.user.UserQueryService/FindByTrashed',
+                request_serializer=user_dot_user__query__pb2.FindAllUserRequest.SerializeToString,
+                response_deserializer=user_dot_user__common__pb2.ApiResponsePaginationUserDeleteAt.FromString,
+                _registered_method=True)
+
+
+class UserQueryServiceServicer:
+    """Missing associated documentation comment in.proto file."""
+
+    def FindAll(self, request, context):
+        """Missing associated documentation comment in.proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def FindById(self, request, context):
+        """Missing associated documentation comment in.proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def FindByEmail(self, request, context):
+        """Missing associated documentation comment in.proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def FindByVerificationCode(self, request, context):
+        """Missing associated documentation comment in.proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def FindByActive(self, request, context):
+        """Missing associated documentation comment in.proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def FindByTrashed(self, request, context):
+        """Missing associated documentation comment in.proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_UserQueryServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'FindAll': grpc.unary_unary_rpc_method_handler(
+                    servicer.FindAll,
+                    request_deserializer=user_dot_user__query__pb2.FindAllUserRequest.FromString,
+                    response_serializer=user_dot_user__common__pb2.ApiResponsePaginationUser.SerializeToString,
+            ),
+            'FindById': grpc.unary_unary_rpc_method_handler(
+                    servicer.FindById,
+                    request_deserializer=user_dot_user__common__pb2.FindByIdUserRequest.FromString,
+                    response_serializer=user_dot_user__common__pb2.ApiResponseUser.SerializeToString,
+            ),
+            'FindByEmail': grpc.unary_unary_rpc_method_handler(
+                    servicer.FindByEmail,
+                    request_deserializer=user_dot_user__common__pb2.FindByEmailRequest.FromString,
+                    response_serializer=user_dot_user__common__pb2.ApiResponseUserWithPassword.SerializeToString,
+            ),
+            'FindByVerificationCode': grpc.unary_unary_rpc_method_handler(
+                    servicer.FindByVerificationCode,
+                    request_deserializer=user_dot_user__common__pb2.FindByVerificationCodeRequest.FromString,
+                    response_serializer=user_dot_user__common__pb2.ApiResponseUser.SerializeToString,
+            ),
+            'FindByActive': grpc.unary_unary_rpc_method_handler(
+                    servicer.FindByActive,
+                    request_deserializer=user_dot_user__query__pb2.FindAllUserRequest.FromString,
+                    response_serializer=user_dot_user__common__pb2.ApiResponsePaginationUserDeleteAt.SerializeToString,
+            ),
+            'FindByTrashed': grpc.unary_unary_rpc_method_handler(
+                    servicer.FindByTrashed,
+                    request_deserializer=user_dot_user__query__pb2.FindAllUserRequest.FromString,
+                    response_serializer=user_dot_user__common__pb2.ApiResponsePaginationUserDeleteAt.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'pb.user.UserQueryService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('pb.user.UserQueryService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class UserQueryService:
+    """Missing associated documentation comment in.proto file."""
+
+    @staticmethod
+    def FindAll(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pb.user.UserQueryService/FindAll',
+            user_dot_user__query__pb2.FindAllUserRequest.SerializeToString,
+            user_dot_user__common__pb2.ApiResponsePaginationUser.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def FindById(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pb.user.UserQueryService/FindById',
+            user_dot_user__common__pb2.FindByIdUserRequest.SerializeToString,
+            user_dot_user__common__pb2.ApiResponseUser.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def FindByEmail(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pb.user.UserQueryService/FindByEmail',
+            user_dot_user__common__pb2.FindByEmailRequest.SerializeToString,
+            user_dot_user__common__pb2.ApiResponseUserWithPassword.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def FindByVerificationCode(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pb.user.UserQueryService/FindByVerificationCode',
+            user_dot_user__common__pb2.FindByVerificationCodeRequest.SerializeToString,
+            user_dot_user__common__pb2.ApiResponseUser.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def FindByActive(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pb.user.UserQueryService/FindByActive',
+            user_dot_user__query__pb2.FindAllUserRequest.SerializeToString,
+            user_dot_user__common__pb2.ApiResponsePaginationUserDeleteAt.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def FindByTrashed(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pb.user.UserQueryService/FindByTrashed',
+            user_dot_user__query__pb2.FindAllUserRequest.SerializeToString,
+            user_dot_user__common__pb2.ApiResponsePaginationUserDeleteAt.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)

@@ -1,0 +1,445 @@
+# Local development stack for the FastAPI ecommerce port.
+#
+#   make infra-up      -> postgres + redis + kafka only (no profile)
+#   make services-up   -> infra + all app services (--profile services)
+#
+# Infra service names/container names/ports mirror the long-running
+# `payment-gateway-*` containers so `docker compose up` reuses them instead of
+# fighting over 5432/6379/9092 (documented inheritance from the seed project).
+#
+# In-network addressing (what the containers use):
+#   postgres -> postgres:5432      redis -> redis:6379      kafka -> kafka:29092
+# Host addressing (what `make run-*` / the committed `.env` use):
+#   postgres -> localhost:5432     redis -> localhost:6379  kafka -> localhost:9092
+#
+# One Redis instance is shared by every domain; isolation is per logical DB
+# (REDIS_DB_<SUFFIX>), values verbatim from the Go `docker.env`.
+name: deployments
+
+# Shared by every application container. Deliberately omits REDIS_DB_<SUFFIX>
+# (per-service) and the gateway-only settings.
+x-app-env: &app-env
+  ENV: docker
+  SECRET_KEY: dev-secret-key-change-me-in-production
+  ENABLE_REFLECTION: "false"
+  # No OTel collector in this stack; the SDK would otherwise retry export
+  # forever.
+  OTEL_ENABLED: "false"
+  DB_DRIVER: pgx
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_USERNAME: root
+  DB_PASSWORD: root
+  DB_NAME: payment_gateway
+  DB_MAX_OPEN_CONNS: "8"
+  DB_MIN_IDLE_CONNS: "1"
+  # Plain seconds (the Go `1h`/`30m` viper durations are NOT parseable here).
+  DB_CONN_MAX_LIFETIME: "3600"
+  DB_CONN_MAX_IDLE_TIME: "1800"
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  KAFKA_BROKERS: kafka:29092
+  SMTP_HOST: smtp.ethereal.email
+  SMTP_PORT: "587"
+  SMTP_USER: ""
+  SMTP_PASSWORD: ""
+  EMAIL_MAX_RETRIES: "5"
+  EMAIL_RETRY_BACKOFF: "30"
+  GRPC_AUTH_ADDR: auth:50051
+  GRPC_ROLE_ADDR: role:50052
+  GRPC_USER_ADDR: user:50053
+  GRPC_CATEGORY_ADDR: category:50054
+  GRPC_MERCHANT_ADDR: merchant:50055
+  GRPC_ORDER_ITEM_ADDR: order_item:50056
+  GRPC_ORDER_ADDR: order:50057
+  GRPC_PRODUCT_ADDR: product:50058
+  GRPC_TRANSACTION_ADDR: transaction:50059
+  GRPC_CART_ADDR: cart:50060
+  GRPC_REVIEW_ADDR: review:50061
+  GRPC_SLIDER_ADDR: slider:50062
+  GRPC_SHIPPING_ADDRESS_ADDR: shipping_address:50063
+  GRPC_BANNER_ADDR: banner:50064
+  GRPC_MERCHANT_AWARD_ADDR: merchant_award:50065
+  GRPC_MERCHANT_BUSINESS_ADDR: merchant_business:50066
+  GRPC_MERCHANT_DETAIL_ADDR: merchant_detail:50067
+  GRPC_MERCHANT_POLICY_ADDR: merchant_policy:50068
+  GRPC_REVIEW_DETAIL_ADDR: review_detail:50069
+
+x-healthy: &healthy
+  condition: service_healthy
+
+# Every domain service needs the schema to exist, so it waits for the one-shot
+# `migrate` job in addition to healthy infra.
+x-domain-depends: &domain-depends
+  postgres: {condition: service_healthy}
+  redis: {condition: service_healthy}
+  kafka: {condition: service_healthy}
+  migrate: {condition: service_completed_successfully}
+
+services:
+  # ---------------------------------------------------------------- infra ----
+  postgres:
+    image: postgres:17
+    container_name: payment-gateway-postgres
+    environment:
+      POSTGRES_DB: payment_gateway
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: root
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d payment_gateway"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: payment-gateway-redis
+    command: ["redis-server"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  kafka:
+    image: apache/kafka:3.9.0
+    container_name: payment-gateway-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      # Dual listeners: PLAINTEXT for host clients (localhost:9092),
+      # PLAINTEXT_INTERNAL for in-network clients (kafka:29092).
+      KAFKA_LISTENERS: PLAINTEXT://:9092,PLAINTEXT_INTERNAL://:29092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  # ---------------------------------------------------------- migrations ----
+  # One-shot: `docker compose --profile services run --rm migrate`.
+  migrate:
+    profiles: ["services"]
+    build:
+      context: ..
+      dockerfile: service/apigateway/Dockerfile
+    image: ecommerce/migrate:latest
+    container_name: ecommerce-migrate
+    command: ["python", "-m", "alembic", "-c", "alembic.ini", "upgrade", "head"]
+    environment:
+      <<: *app-env
+    depends_on:
+      postgres: *healthy
+
+  # ------------------------------------------------------------- gateway ----
+  apigateway:
+    profiles: ["services"]
+    build:
+      context: ..
+      dockerfile: service/apigateway/Dockerfile
+    image: ecommerce/apigateway:latest
+    container_name: ecommerce-apigateway
+    environment:
+      <<: *app-env
+      REDIS_DB_APIGATEWAY: "19"
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres: *healthy
+      redis: *healthy
+      kafka: *healthy
+      migrate: {condition: service_completed_successfully}
+      auth: {condition: service_started}
+      role: {condition: service_started}
+      user: {condition: service_started}
+      category: {condition: service_started}
+      merchant: {condition: service_started}
+      order_item: {condition: service_started}
+      order: {condition: service_started}
+      product: {condition: service_started}
+      transaction: {condition: service_started}
+      cart: {condition: service_started}
+      review: {condition: service_started}
+      slider: {condition: service_started}
+      shipping_address: {condition: service_started}
+      banner: {condition: service_started}
+      merchant_award: {condition: service_started}
+      merchant_business: {condition: service_started}
+      merchant_detail: {condition: service_started}
+      merchant_policy: {condition: service_started}
+      review_detail: {condition: service_started}
+
+  # ----------------------------------------------------- domain services ----
+  # 19 gRPC domains, ports verbatim from each Go cmd/main.go.
+  auth:
+    profiles: ["services"]
+    build:
+      context: ..
+      dockerfile: service/auth/Dockerfile
+    image: ecommerce/auth:latest
+    container_name: ecommerce-auth
+    environment:
+      <<: *app-env
+      REDIS_DB_AUTH: "0"
+    depends_on: *domain-depends
+
+  role:
+    profiles: ["services"]
+    build:
+      context: ..
+      dockerfile: service/role/Dockerfile
+    image: ecommerce/role:latest
+    container_name: ecommerce-role
+    environment:
+      <<: *app-env
+      REDIS_DB_ROLE: "1"
+    depends_on: *domain-depends
+
+  user:
+    profiles: ["services"]
+    build:
+      context: ..
+      dockerfile: service/user/Dockerfile
+    image: ecommerce/user:latest
+    container_name: ecommerce-user
+    environment:
+      <<: *app-env
+      REDIS_DB_USER: "2"
+    depends_on: *domain-depends
+
+  category:
+    profiles: ["services"]
+    build:
+      context: ..
+      dockerfile: service/category/Dockerfile
+    image: ecommerce/category:latest
+    container_name: ecommerce-category
+    environment:
+      <<: *app-env
+      REDIS_DB_CATEGORY: "3"
+    depends_on: *domain-depends
+
+  merchant:
+    profiles: ["services"]
+    build:
+      context: ..
+      dockerfile: service/merchant/Dockerfile
+    image: ecommerce/merchant:latest
+    container_name: ecommerce-merchant
+    environment:
+      <<: *app-env
+      REDIS_DB_MERCHANT: "4"
+    depends_on: *domain-depends
+
+  order_item:
+    profiles: ["services"]
+    build:
+      context: ..
+      dockerfile: service/order_item/Dockerfile
+    image: ecommerce/order_item:latest
+    container_name: ecommerce-order_item
+    environment:
+      <<: *app-env
+      REDIS_DB_ORDER_ITEM: "5"
+    depends_on: *domain-depends
+
+  order:
+    profiles: ["services"]
+    build:
+      context: ..
+      dockerfile: service/order/Dockerfile
+    image: ecommerce/order:latest
+    container_name: ecommerce-order
+    environment:
+      <<: *app-env
+      REDIS_DB_ORDER: "6"
+    depends_on: *domain-depends
+
+  product:
+    profiles: ["services"]
+    build:
+      context: ..
+      dockerfile: service/product/Dockerfile
+    image: ecommerce/product:latest
+    container_name: ecommerce-product
+    environment:
+      <<: *app-env
+      REDIS_DB_PRODUCT: "7"
+    depends_on: *domain-depends
+
+  transaction:
+    profiles: ["services"]
+    build:
+      context: ..
+      dockerfile: service/transaction/Dockerfile
+    image: ecommerce/transaction:latest
+    container_name: ecommerce-transaction
+    environment:
+      <<: *app-env
+      REDIS_DB_TRANSACTION: "8"
+    depends_on: *domain-depends
+
+  cart:
+    profiles: ["services"]
+    build:
+      context: ..
+      dockerfile: service/cart/Dockerfile
+    image: ecommerce/cart:latest
+    container_name: ecommerce-cart
+    environment:
+      <<: *app-env
+      REDIS_DB_CART: "9"
+    depends_on: *domain-depends
+
+  review:
+    profiles: ["services"]
+    build:
+      context: ..
+      dockerfile: service/review/Dockerfile
+    image: ecommerce/review:latest
+    container_name: ecommerce-review
+    environment:
+      <<: *app-env
+      REDIS_DB_REVIEW: "10"
+    depends_on: *domain-depends
+
+  slider:
+    profiles: ["services"]
+    build:
+      context: ..
+      dockerfile: service/slider/Dockerfile
+    image: ecommerce/slider:latest
+    container_name: ecommerce-slider
+    environment:
+      <<: *app-env
+      REDIS_DB_SLIDER: "11"
+    depends_on: *domain-depends
+
+  shipping_address:
+    profiles: ["services"]
+    build:
+      context: ..
+      dockerfile: service/shipping_address/Dockerfile
+    image: ecommerce/shipping_address:latest
+    container_name: ecommerce-shipping_address
+    environment:
+      <<: *app-env
+      REDIS_DB_SHIPPING_ADDRESS: "12"
+    depends_on: *domain-depends
+
+  banner:
+    profiles: ["services"]
+    build:
+      context: ..
+      dockerfile: service/banner/Dockerfile
+    image: ecommerce/banner:latest
+    container_name: ecommerce-banner
+    environment:
+      <<: *app-env
+      REDIS_DB_BANNER: "13"
+    depends_on: *domain-depends
+
+  merchant_award:
+    profiles: ["services"]
+    build:
+      context: ..
+      dockerfile: service/merchant_award/Dockerfile
+    image: ecommerce/merchant_award:latest
+    container_name: ecommerce-merchant_award
+    environment:
+      <<: *app-env
+      REDIS_DB_MERCHANT_AWARD: "14"
+    depends_on: *domain-depends
+
+  merchant_business:
+    profiles: ["services"]
+    build:
+      context: ..
+      dockerfile: service/merchant_business/Dockerfile
+    image: ecommerce/merchant_business:latest
+    container_name: ecommerce-merchant_business
+    environment:
+      <<: *app-env
+      REDIS_DB_MERCHANT_BUSINESS: "15"
+    depends_on: *domain-depends
+
+  merchant_detail:
+    profiles: ["services"]
+    build:
+      context: ..
+      dockerfile: service/merchant_detail/Dockerfile
+    image: ecommerce/merchant_detail:latest
+    container_name: ecommerce-merchant_detail
+    environment:
+      <<: *app-env
+      REDIS_DB_MERCHANT_DETAIL: "16"
+    depends_on: *domain-depends
+
+  merchant_policy:
+    profiles: ["services"]
+    build:
+      context: ..
+      dockerfile: service/merchant_policy/Dockerfile
+    image: ecommerce/merchant_policy:latest
+    container_name: ecommerce-merchant_policy
+    environment:
+      <<: *app-env
+      REDIS_DB_MERCHANT_POLICY: "17"
+    depends_on: *domain-depends
+
+  review_detail:
+    profiles: ["services"]
+    build:
+      context: ..
+      dockerfile: service/review_detail/Dockerfile
+    image: ecommerce/review_detail:latest
+    container_name: ecommerce-review_detail
+    environment:
+      <<: *app-env
+      REDIS_DB_REVIEW_DETAIL: "18"
+    depends_on: *domain-depends
+
+  # --------------------------------------------------------- email worker ----
+  # Kafka consumer only (no gRPC): drains the 8 outbox email topics, retries
+  # transient SMTP failures via the shared retry topic, dead-letters at max
+  # attempts, dedups through the Postgres consumer inbox.
+  email:
+    profiles: ["services"]
+    build:
+      context: ..
+      dockerfile: service/email/Dockerfile
+    image: ecommerce/email:latest
+    container_name: ecommerce-email
+    environment:
+      <<: *app-env
+    depends_on: *domain-depends
+
+volumes:
+  postgres-data:
+  redis-data:
+  kafka-data:

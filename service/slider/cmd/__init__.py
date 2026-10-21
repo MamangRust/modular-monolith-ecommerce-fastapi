@@ -1,0 +1,1 @@
+"""Slider service entrypoint."""

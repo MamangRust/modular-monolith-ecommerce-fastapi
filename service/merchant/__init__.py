@@ -1,0 +1,1 @@
+"""Merchant domain service. Serves the merchant core (`merchant`) and its documents (`merchant_document`) over gRPC. Both are hosted by this one process/port (50055), exactly like the `merchant` service registers four servicers."""

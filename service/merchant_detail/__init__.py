@@ -1,0 +1,1 @@
+"""Merchant detail domain service. Serves merchant profile details (`merchant_detail`) and the standalone merchant social media links (`merchant_social_link`) over gRPC. Both are hosted by this one process/port (50067), exactly like the `merchant_detail` service registers three servicers."""

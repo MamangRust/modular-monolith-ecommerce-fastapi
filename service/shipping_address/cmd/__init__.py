@@ -1,0 +1,1 @@
+"""Shipping address service entrypoint."""

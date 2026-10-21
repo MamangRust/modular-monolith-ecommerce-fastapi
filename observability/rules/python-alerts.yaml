@@ -1,0 +1,134 @@
+# Application alerts for the FastAPI services.
+#
+# Every expression here is written against a series this stack actually
+# produces. Metric names are what Prometheus scrapes from the collector
+# (`namespace: python_app` + the OTel instrument name + the unit suffix the
+# collector appends), not the raw OTel names:
+#
+#   OTel instrument                  unit    scraped series
+#   ------------------------------   -----   ---------------------------------------
+#   http.server.duration             ms      python_app_http_server_duration_milliseconds_bucket
+#   http.server.active_requests      {req}   python_app_http_server_active_requests
+#   email_sent_total / _failed_total 1       python_app_email_sent_total / _failed_total
+#
+# Notes that keep this file honest about what the Python port does:
+#   * Only the API gateway is a FastAPI process, so only it emits HTTP server
+#     metrics. Domain services are grpc.aio servers; the gRPC instrumentor that
+#     ships with opentelemetry-instrumentation-grpc is traces-only and emits no
+#     rpc.server.* metrics, so there are no per-domain request/latency series.
+#     Domain health is covered by the absence-based DomainServiceDown rule and
+#     by the gRPC health service, not by a request-rate alert.
+#   * There is no process-runtime instrumentation in the dependency set, so
+#     process.runtime.cpython.* is unavailable. Container/host pressure is
+#     covered by the node-exporter and cAdvisor rules instead.
+groups:
+  - name: python-http-alerts
+    rules:
+      # ── Gateway 5xx rate ────────────────────────────────────────────
+      - alert: GatewayHighErrorRate
+        expr: |
+          sum(rate(python_app_http_server_duration_milliseconds_count{http_status_code=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(python_app_http_server_duration_milliseconds_count[5m])), 0.0001)
+          > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API gateway is returning {{ $value | humanizePercentage }} 5xx"
+          description: "More than 5% of gateway HTTP responses have been 5xx for 5 minutes."
+          runbook: "Check gateway logs in Loki and the failing upstream service's Jaeger traces."
+
+      # ── Gateway p95 latency ────────────────────────────────────────
+      # The histogram unit is milliseconds, hence the /1000 to report seconds.
+      - alert: GatewayHighLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (
+              rate(python_app_http_server_duration_milliseconds_bucket[5m])
+            )
+          ) / 1000 > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API gateway p95 latency is {{ $value }}s"
+          description: "95th percentile gateway latency has exceeded 1s for 5 minutes."
+          runbook: "Compare per-upstream latency in Jaeger; a single slow gRPC call usually dominates."
+
+      # ── Gateway has stopped serving ────────────────────────────────
+      # Rate-based alerts go silent when traffic stops for any reason, so this
+      # fires on the absence of the series itself.
+      - alert: GatewayDown
+        expr: |
+          absent(python_app_http_server_active_requests{service_name="api-gateway"})
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API gateway is not reporting metrics"
+          description: "No gateway HTTP metrics for 3 minutes - the process is down or cannot reach the collector."
+
+      # ── In-flight requests piling up (slow upstream, not a crash) ──
+      - alert: GatewayRequestsBacklog
+        expr: |
+          sum(python_app_http_server_active_requests{service_name="api-gateway"}) > 100
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API gateway has {{ $value }} in-flight requests"
+          description: "More than 100 concurrent requests for 10 minutes suggests upstream saturation."
+
+  - name: python-domain-alerts
+    rules:
+      # Domain services have no request metrics, so "up" is detected by the
+      # presence of their health-derived target instead of a rate.
+      - alert: DomainServiceDown
+        expr: |
+          up{job="python-app-via-otel"} == 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Collector target is down"
+          description: "Prometheus cannot scrape the OTel collector, so no service metrics are available."
+
+  - name: python-email-alerts
+    rules:
+      # email_* counters only exist once the email worker is running and its
+      # Kafka consumer is healthy, hence the absent() guard that makes a
+      # missing worker visible instead of silently green.
+      - alert: EmailWorkerNotReporting
+        expr: |
+          absent(python_app_email_sent_total)
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Email worker is not reporting counters"
+          description: "No email_sent_total series for 15 minutes - the worker is down or has processed no mail."
+
+      - alert: EmailFailureRateHigh
+        expr: |
+          sum(rate(python_app_email_failed_total[5m]))
+          /
+          clamp_min(sum(rate(python_app_email_sent_total[5m])) + sum(rate(python_app_email_failed_total[5m])), 0.0001)
+          > 0.10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Email failures are {{ $value | humanizePercentage }} of traffic"
+          description: "More than 10% of email attempts have failed over 5 minutes."
+          runbook: "Check SMTP credentials and the retry/DLQ topics; see the email worker logs."
+
+      - alert: EmailDeadLettering
+        expr: |
+          increase(python_app_email_deadletter_total[10m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Emails are being dead-lettered"
+          description: "At least one message exhausted all retries in the last 10 minutes."

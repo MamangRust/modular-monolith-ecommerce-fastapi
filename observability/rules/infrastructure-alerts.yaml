@@ -1,0 +1,54 @@
+# Infrastructure alerts for the Python port (redis, host, otel collector).
+groups:
+  - name: infrastructure-alerts
+    rules:
+      - alert: HighHostCpu
+        expr: 100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High host CPU ({{ $value | humanize }}%)"
+          description: "Host CPU utilisation has been above 85% for 10 minutes."
+
+      - alert: HighHostMemory
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High host memory ({{ $value | humanize }}%)"
+          description: "Host memory utilisation has been above 90% for 10 minutes."
+
+      - alert: LowDiskSpace
+        expr: (1 - (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})) * 100 > 90
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Low disk space on /"
+          description: "Root filesystem is more than 90% full."
+
+      - alert: OtelCollectorDroppingData
+        expr: |
+          sum(rate(otelcol_exporter_send_failed_metric_points[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OTel collector is dropping metric points"
+          description: "The collector failed to export metric points — check the downstream (Prometheus/Jaeger/Loki)."
+
+      # No redis-exporter runs in this stack, so Redis is observed through its
+      # consumers instead: redis.asyncio clients connect at startup, and a
+      # gateway that cannot reach Redis stops emitting HTTP metrics entirely.
+      - alert: GatewayRedisUnavailable
+        expr: |
+          absent(python_app_http_server_active_requests{service_name="api-gateway"})
+          and on() (up{job="python-app-via-otel"} == 1)
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API gateway stopped reporting while the collector is up"
+          description: "The collector is healthy but the gateway exports nothing — check gateway logs for Redis connection errors."

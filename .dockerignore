@@ -1,0 +1,37 @@
+# Build context for the service images is the repository root. Keep this file
+# in sync with what the per-service Dockerfiles actually COPY (pyproject.toml,
+# uv.lock, pkg/, shared/, pb/, service/<name>/, alembic.ini) — everything else
+# only slows down context transfer and invalidates layers.
+
+# --- VCS / editor ---
+.git
+.gitignore
+.vscode
+.idea
+
+# --- local Python env + caches (the image installs its own .venv) ---
+.venv
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- secrets / local config (passed via env at runtime, never baked in) ---
+.env
+*.env
+!.env.example
+
+# --- docs / tooling not needed at runtime ---
+README.md
+Planning.md
+curl.md
+images/
+grafana_setup/
+scripts/
+proto/
+tests/
+legacy/
+deployments/

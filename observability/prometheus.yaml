@@ -1,0 +1,59 @@
+global:
+  scrape_interval: 10s
+  evaluation_interval: 10s
+
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+# Only rules whose source series exist in this stack are loaded. The Go-era
+# per-domain rules (apigateway/auth/merchant/role/transaction/user/
+# email-service, kafka-exporter) queried counters the Python services do not
+# emit and have been removed rather than left to evaluate against nothing.
+rule_files:
+  - rules/python-alerts.yaml
+  - rules/infrastructure-alerts.yaml
+  - rules/postgres-alerts.yaml
+  - rules/kafka-alerts.yaml
+  - rules/node-exporter-alerts.yaml
+  - rules/otel-collector-alerts.yaml
+
+
+scrape_configs:
+  # Everything the Python services export, re-exposed by the collector.
+  - job_name: 'python-app-via-otel'
+    static_configs:
+      - targets: [ 'otel-collector:8889' ]
+        labels:
+          application: 'python-app'
+          environment: 'production'
+
+  - job_name: 'otel-collector-internal'
+    static_configs:
+      - targets: [ 'otel-collector:8888' ]
+        labels:
+          application: 'otel-collector'
+          environment: 'production'
+
+  - job_name: "node-exporter"
+    scrape_interval: 5s
+    static_configs:
+      - targets: [ "node-exporter:9100" ]
+        labels:
+          application: "node-exporter"
+
+  - job_name: 'kafka-exporter'
+    static_configs:
+      - targets: ['kafka-exporter:9308']
+        labels:
+          application: 'Kafka Exporter'
+          environment: 'production'
+
+  - job_name: 'postgres-exporter'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+        labels:
+          application: 'Postgres Exporter'
+          environment: 'production'

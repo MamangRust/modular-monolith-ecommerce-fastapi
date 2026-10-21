@@ -1,0 +1,17 @@
+"""Merchant service composition root."""
+
+from __future__ import annotations
+
+from service.merchant.apps.server import (
+    MERCHANT_SERVICE_NAMES,
+    SERVICE_NAME,
+    SERVICE_PORT,
+    new_server,
+)
+
+__all__ = [
+    "MERCHANT_SERVICE_NAMES",
+    "SERVICE_NAME",
+    "SERVICE_PORT",
+    "new_server",
+]

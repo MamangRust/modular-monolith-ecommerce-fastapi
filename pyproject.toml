@@ -1,0 +1,97 @@
+[project]
+name = "monolith-fastapi-payment-gateway"
+version = "0.1.0"
+description = "Distributed modular monolith payment gateway — FastAPI REST gateway + gRPC domain services (raw SQL, outbox/Kafka)"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.5",
+    "uvicorn[standard]>=0.32.1",
+    "httpx>=0.28.0",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30.0",
+    "alembic>=1.14.0",
+    "pydantic[email]>=2.10.2",
+    "pydantic-settings>=2.6.1",
+    "python-dotenv>=1.0.1",
+    "pyjwt>=2.10.0",
+    "bcrypt>=4.2.1",
+    "redis>=5.0.0",
+    "aiokafka>=0.12.0",
+    "grpcio>=1.68.0",
+    "protobuf>=5.29.0",
+    "structlog>=24.4.0",
+    "prometheus-client>=0.21.0",
+    "opentelemetry-api>=1.28.2",
+    "opentelemetry-sdk>=1.28.2",
+    "opentelemetry-exporter-otlp>=1.28.2",
+    "opentelemetry-instrumentation-fastapi>=0.49b2",
+    "opentelemetry-instrumentation-grpc>=0.49b2",
+    "opentelemetry-instrumentation-aiokafka>=0.49b2",
+    "opentelemetry-exporter-prometheus>=0.49b2",
+    "grpcio-health-checking>=1.84.0",
+    "grpcio-reflection>=1.84.0",
+    "python-multipart>=0.0.20",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.3",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "grpcio-tools>=1.68.0",
+    "ruff>=0.5.0",
+    "mypy>=1.10.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra --strict-markers"
+markers = [
+    "integration: tests requiring PostgreSQL/Redis/Kafka (run with compose up)",
+    "e2e: full stack tests across gateway + gRPC services",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+exclude = ["legacy", "pb", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4"]
+ignore = ["E501"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency injection is expressed as `Depends(...)` defaults.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Body",
+    "fastapi.Header",
+    "fastapi.Form",
+    "fastapi.File",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Pydantic v2 generic models must subclass `Generic[T]`.
+"shared/domain/response/responses.py" = ["UP046"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = false
+warn_unused_ignores = true
+ignore_missing_imports = true
+plugins = ["pydantic.mypy"]
+exclude = ["^legacy/", "^pb/", "\\.venv"]
+packages = ["pkg", "shared", "service", "tests"]
+
+# Generated protobuf modules expose messages dynamically, so mypy cannot
+# see their attributes; skip analysing them and treat them as Any.
+[[tool.mypy.overrides]]
+module = ["pb.*", "pb"]
+follow_imports = "skip"

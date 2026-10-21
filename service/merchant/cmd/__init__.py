@@ -1,0 +1,1 @@
+"""Merchant service entrypoint package."""
